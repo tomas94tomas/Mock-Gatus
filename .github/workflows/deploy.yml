@@ -1,1 +1,60 @@
+name: infra-terraform
+on:
+  push:
+    paths: [ "terraform/**" ]
+  pull_request:
+    paths: [ "terraform/**" ]
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  AWS_TFSTATE_BUCKET: ${{ secrets.AWS_TFSTATE_BUCKET }}
+  AWS_DDB_TABLE: ${{ secrets.AWS_DDB_TABLE }}
+  AWS_OIDC_ROLE_NAME: ${{ secrets.AWS_OIDC_ROLE_NAME }}
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.AWS_OIDC_ROLE_NAME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Write backend.hcl
+        working-directory: terraform
+        run: |
+          cat > backend.hcl <<EOF
+          bucket         = "${AWS_TFSTATE_BUCKET}"
+          key            = "mock-gatus/terraform.tfstate"
+          region         = "${AWS_REGION}"
+          dynamodb_table = "${AWS_DDB_TABLE}"
+          encrypt        = true
+          EOF
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init -backend-config=backend.hcl
+
+      - name: Terraform Fmt/Validate/Plan (PR)
+        if: github.event_name == 'pull_request'
+        working-directory: terraform
+        run: |
+          terraform fmt -check
+          terraform validate
+          terraform plan -out=tfplan
+
+      - name: Terraform Apply (main)
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        working-directory: terraform
+        run: terraform apply -auto-approve
 
