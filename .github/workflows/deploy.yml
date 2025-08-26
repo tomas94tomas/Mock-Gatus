@@ -11,10 +11,9 @@ permissions:
   contents: read
 
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION }}
-  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  AWS_REGION:        ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID:    ${{ secrets.AWS_ACCOUNT_ID }}
   AWS_TFSTATE_BUCKET: ${{ secrets.AWS_TFSTATE_BUCKET }}
-  AWS_DDB_TABLE: ${{ secrets.AWS_DDB_TABLE }}
   AWS_OIDC_ROLE_NAME: ${{ secrets.AWS_OIDC_ROLE_NAME }}
 
 jobs:
@@ -34,11 +33,10 @@ jobs:
         working-directory: terraform
         run: |
           cat > backend.hcl <<EOF
-          bucket         = "${AWS_TFSTATE_BUCKET}"
-          key            = "mock-gatus/terraform.tfstate"
-          region         = "${AWS_REGION}"
-          dynamodb_table = "${AWS_DDB_TABLE}"
-          encrypt        = true
+          bucket  = "${AWS_TFSTATE_BUCKET}"
+          key     = "mock-gatus/terraform.tfstate"
+          region  = "${AWS_REGION}"
+          encrypt = true
           EOF
 
       - name: Terraform Init
@@ -57,4 +55,3 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         working-directory: terraform
         run: terraform apply -auto-approve
-
