@@ -1,0 +1,61 @@
+name: configure-and-deploy
+on:
+  push:
+    paths:
+      - "ansible/**"
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION:        ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID:    ${{ secrets.AWS_ACCOUNT_ID }}
+  AWS_OIDC_ROLE_NAME:${{ secrets.AWS_OIDC_ROLE_NAME }}
+
+jobs:
+  ansible:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.AWS_OIDC_ROLE_NAME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get EC2 instance id from Terraform outputs
+        id: tf
+        working-directory: terraform
+        run: |
+          terraform init -backend-config='bucket=${{ secrets.AWS_TFSTATE_BUCKET }}' \
+                         -backend-config='key=teraform/devops-project-terraform-state-2025/terraform.tfstate' \
+                         -backend-config='region=${{ secrets.AWS_REGION }}' \
+                         -backend-config='encrypt=true'
+          terraform output -raw instance_id > ../ansible/inventories/instance_id
+
+      - name: Setup Python & Ansible
+        uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: |
+          python -m pip install --upgrade pip
+          pip install ansible boto3 botocore
+          ansible-galaxy collection install -r ansible/requirements.yml
+
+      - name: Create inventory using SSM connection
+        working-directory: ansible
+        run: |
+          IID=$(cat inventories/instance_id)
+          cat > inventories/hosts.ini <<EOF
+          [aws]
+          ${IID} ansible_connection=aws_ssm ansible_user=ec2-user
+          EOF
+          echo "Inventory:"
+          cat inventories/hosts.ini
+
+      - name: Run playbook (prepare VM + deploy Gatus)
+        working-directory: ansible
+        run: |
+          ansible-playbook -i inventories/hosts.ini playbooks/site.yml -vv
