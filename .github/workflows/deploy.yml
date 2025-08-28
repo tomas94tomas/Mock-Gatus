@@ -14,7 +14,7 @@ env:
   AWS_REGION:        ${{ secrets.AWS_REGION }}
   AWS_ACCOUNT_ID:    ${{ secrets.AWS_ACCOUNT_ID }}
   AWS_TFSTATE_BUCKET: ${{ secrets.AWS_TFSTATE_BUCKET }}
-  AWS_OIDC_ROLE_NAME: ${{ secrets.AWS_OIDC_ROLE_NAME }}
+  AWS_OIDC_ROLE_NAME: "mock-gatus-ssm-ec2-role"
 
 jobs:
   terraform:
