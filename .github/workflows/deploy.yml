@@ -43,4 +43,4 @@ jobs:
       - name: Terraform Apply (main)
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         working-directory: terraform
-        run: terraform apply ./tfplan
+        run: terraform apply tfplan
