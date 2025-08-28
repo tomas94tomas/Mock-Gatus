@@ -38,9 +38,8 @@ jobs:
         run: |
           terraform fmt -check
           terraform validate
-          terraform plan -out=tfplan
-
+          terraform plan
       - name: Terraform Apply (main)
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         working-directory: terraform
-        run: terraform apply tfplan
+        run: terraform apply -auto-approve
