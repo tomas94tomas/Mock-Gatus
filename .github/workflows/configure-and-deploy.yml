@@ -12,7 +12,7 @@ permissions:
 env:
   AWS_REGION:        ${{ secrets.AWS_REGION }}
   AWS_ACCOUNT_ID:    ${{ secrets.AWS_ACCOUNT_ID }}
-  AWS_OIDC_ROLE_NAME:${{ secrets.AWS_OIDC_ROLE_NAME }}
+  AWS_OIDC_ROLE_NAME: ${{ secrets.AWS_OIDC_ROLE_NAME }}
 
 jobs:
   ansible:
