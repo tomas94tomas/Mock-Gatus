@@ -1,0 +1,10 @@
+# terraform
+# Local .terraform directories
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+.terraform.lock.hcl
+__pycache__/
+*.db
+venv/
+*.plan

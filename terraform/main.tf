@@ -1,22 +1,41 @@
 locals { name = var.project_tag }
 
 # Create the GitHub OIDC Provider
-resource "aws_iam_openid_connect_provider" "github" 
-{  url = "https://token.actions.githubusercontent.com"
+resource "aws_iam_openid_connect_provider" "github" {
+  url = "https://token.actions.githubusercontent.com"
+
+  client_id_list = [
+    "sts.amazonaws.com"
+  ]
+
+  # thumbprint_list = [
+  #   "6938fd4d98bab03faadb97b34396831e3780aea1" # Current GitHub OIDC thumbprint
+  # ]
+
+  tags = {
+    Name = "github-oidc-provider"
+  }
 }
 
+
 # VPC + Internet
-resource "aws_vpc" "vpc" { cidr_block = "10.50.0.0/16" tags = { Name = "${local.name}-vpc" } }
+resource "aws_vpc" "vpc" {
+  cidr_block = "10.50.0.0/16"
+  tags       = { Name = "${local.name}-vpc" }
+}
 resource "aws_internet_gateway" "igw" { vpc_id = aws_vpc.vpc.id }
 resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.vpc.id
   cidr_block              = "10.50.1.0/24"
   map_public_ip_on_launch = true
-  tags = { Name = "${local.name}-public" }
+  tags                    = { Name = "${local.name}-public" }
 }
 resource "aws_route_table" "rt" {
   vpc_id = aws_vpc.vpc.id
-  route { cidr_block = "0.0.0.0/0"; gateway_id = aws_internet_gateway.igw.id }
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+  }
 }
 resource "aws_route_table_association" "rta" {
   subnet_id      = aws_subnet.public.id
@@ -28,20 +47,41 @@ resource "aws_security_group" "sg" {
   name   = "${local.name}-sg"
   vpc_id = aws_vpc.vpc.id
 
-  ingress { from_port = 8080 to_port = 8080 protocol = "tcp" cidr_blocks = ["0.0.0.0/0"] }
+  ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
   dynamic "ingress" {
     for_each = var.allow_ssh_from_cidr == "" ? [] : [1]
-    content { from_port = 22 to_port = 22 protocol = "tcp" cidr_blocks = [var.allow_ssh_from_cidr] }
+    content {
+      from_port   = 22
+      to_port     = 22
+      protocol    = "tcp"
+      cidr_blocks = [var.allow_ssh_from_cidr]
+    }
   }
-  egress { from_port = 0 to_port = 0 protocol = "-1" cidr_blocks = ["0.0.0.0/0"] }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }
 
 # Latest Amazon Linux 2023 AMI
 data "aws_ami" "al2023" {
   owners      = ["137112412989"]
   most_recent = true
-  filter { name = "name"         values = ["al2023-ami-*-x86_64"] }
-  filter { name = "architecture" values = ["x86_64"] }
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-x86_64"]
+  }
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
 }
 
 # EC2 can talk to SSM (no SSH keys required)
@@ -49,12 +89,12 @@ resource "aws_iam_role" "ssm_role" {
   name = "${local.name}-ssm-ec2-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
-    Statement = [{ Effect="Allow", Principal={ Service="ec2.amazonaws.com" }, 
-    Action="sts:AssumeRole", 
-    Condition = {
-    StringLike = {"token.actions.githubusercontent.com:sub" = "repo:tomas94tomas/Mock-Gatus:*"
-          }
-        } }]
+    Statement = [{ Effect = "Allow", Principal = { Service = "ec2.amazonaws.com" },
+      Action = "sts:AssumeRole",
+      Condition = {
+        StringLike = { "token.actions.githubusercontent.com:sub" = "repo:tomas94tomas/Mock-Gatus:*"
+        }
+    } }]
   })
 }
 resource "aws_iam_role_policy_attachment" "ssm_core" {
@@ -71,7 +111,7 @@ data "template_cloudinit_config" "user_data" {
   base64_encode = true
   part {
     content_type = "text/cloud-config"
-    content = <<-YAML
+    content      = <<-YAML
       packages: [ docker ]
       runcmd:
         - usermod -aG docker ec2-user
@@ -84,11 +124,11 @@ data "template_cloudinit_config" "user_data" {
 }
 
 resource "aws_instance" "vm" {
-  ami                         = data.aws_ami.al2023.id
-  instance_type               = "t3.micro"
-  subnet_id                   = aws_subnet.public.id
-  vpc_security_group_ids      = [aws_security_group.sg.id]
-  iam_instance_profile        = aws_iam_instance_profile.ssm_profile.name
-  user_data_base64            = data.template_cloudinit_config.user_data.rendered
-  tags = { Name = "${local.name}-ec2" }
+  ami                    = data.aws_ami.al2023.id
+  instance_type          = "t3.micro"
+  subnet_id              = aws_subnet.public.id
+  vpc_security_group_ids = [aws_security_group.sg.id]
+  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
+  user_data_base64       = data.template_cloudinit_config.user_data.rendered
+  tags                   = { Name = "${local.name}-ec2" }
 }
