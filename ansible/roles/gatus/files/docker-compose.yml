@@ -1,0 +1,11 @@
+services:
+  gatus:
+    image: twinproduction/gatus:v5
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config:/config
+      - gdata:/data
+    restart: unless-stopped
+volumes:
+  gdata:
