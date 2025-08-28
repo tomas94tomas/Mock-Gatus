@@ -1,5 +1,10 @@
 locals { name = var.project_tag }
 
+# Create the GitHub OIDC Provider
+resource "aws_iam_openid_connect_provider" "github" 
+{  url = "https://token.actions.githubusercontent.com"
+}
+
 # VPC + Internet
 resource "aws_vpc" "vpc" { cidr_block = "10.50.0.0/16" tags = { Name = "${local.name}-vpc" } }
 resource "aws_internet_gateway" "igw" { vpc_id = aws_vpc.vpc.id }
@@ -44,7 +49,12 @@ resource "aws_iam_role" "ssm_role" {
   name = "${local.name}-ssm-ec2-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
-    Statement = [{ Effect="Allow", Principal={ Service="ec2.amazonaws.com" }, Action="sts:AssumeRole" }]
+    Statement = [{ Effect="Allow", Principal={ Service="ec2.amazonaws.com" }, 
+    Action="sts:AssumeRole", 
+    Condition = {
+    StringLike = {"token.actions.githubusercontent.com:sub" = "repo:tomas94tomas/Mock-Gatus:*"
+          }
+        } }]
   })
 }
 resource "aws_iam_role_policy_attachment" "ssm_core" {
