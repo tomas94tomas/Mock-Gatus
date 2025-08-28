@@ -89,7 +89,10 @@ resource "aws_iam_role" "ssm_role" {
   name = "${local.name}-ssm-ec2-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
-    Statement = [{ Effect = "Allow", Principal = { Service = "ec2.amazonaws.com" },
+    Statement = [{ Effect = "Allow",
+      Principal = {
+        Federated = aws_iam_openid_connect_provider.github.arn
+      }
       Action = "sts:AssumeRole",
       Condition = {
         StringLike = { "token.actions.githubusercontent.com:sub" = "repo:tomas94tomas/Mock-Gatus:*"
