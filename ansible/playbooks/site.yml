@@ -1,0 +1,9 @@
+---
+- name: Prepare EC2 for containers and deploy Gatus
+  hosts: aws
+  gather_facts: false
+  vars:
+    gatus_dir: /opt/gatus
+  roles:
+    - role: docker
+    - role: gatus
