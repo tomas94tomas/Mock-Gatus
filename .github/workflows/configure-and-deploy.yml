@@ -20,6 +20,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: hashicorp/setup-terraform@v3 
+
+      - name: Ensure inventory folder
+        run: mkdir -p ansible/inventories
+        
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -54,7 +59,7 @@ jobs:
           EOF
           echo "Inventory:"
           cat inventories/hosts.ini
-
+        
       - name: Run playbook (prepare VM + deploy Gatus)
         working-directory: ansible
         run: |
