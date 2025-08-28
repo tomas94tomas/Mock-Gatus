@@ -28,20 +28,9 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.AWS_OIDC_ROLE_NAME }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Write backend.hcl
-        working-directory: terraform
-        run: |
-          cat > backend.hcl <<EOF
-          bucket  = "${AWS_TFSTATE_BUCKET}"
-          key     = "mock-gatus/terraform.tfstate"
-          region  = "${AWS_REGION}"
-          encrypt = true
-          EOF
-
       - name: Terraform Init
         working-directory: terraform
-        run: terraform init -backend-config=backend.hcl
+        run: terraform init
 
       - name: Terraform Fmt/Validate/Plan (PR)
         if: github.event_name == 'pull_request'
@@ -54,4 +43,4 @@ jobs:
       - name: Terraform Apply (main)
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         working-directory: terraform
-        run: terraform apply -auto-approve
+        run: terraform apply ./tfplan

@@ -93,7 +93,7 @@ resource "aws_iam_role" "ssm_role" {
       Principal = {
         Federated = aws_iam_openid_connect_provider.github.arn
       }
-      Action = "sts:AssumeRole",
+      Action = "sts:AssumeRoleWithWebIdentity",
       Condition = {
         StringLike = { "token.actions.githubusercontent.com:sub" = "repo:tomas94tomas/Mock-Gatus:*"
         }
