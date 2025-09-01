@@ -55,7 +55,7 @@ jobs:
           IID=$(cat inventories/instance_id)
           cat > inventories/hosts.ini <<EOF
           [aws]
-          ${IID} ansible_connection=aws_ssm ansible_aws_ssm_run_as_user=root ansible_aws_ssm_execution_timeout=3600
+          ${IID} ansible_connection=aws_ssm ansible_user=root ansible_aws_ssm_run_as_user=root ansible_aws_ssm_execution_timeout=3600
           EOF
           echo "Inventory:"
           cat inventories/hosts.ini
