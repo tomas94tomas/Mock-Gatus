@@ -1,3 +1,4 @@
 ---
 collections:
-  - name: amazon.aws     # for aws_ssm connection plugin
+  - name: amazon.aws      # SSM connection plugin we want
+  - name: community.aws   # (optional) keep both available to avoid redirects
