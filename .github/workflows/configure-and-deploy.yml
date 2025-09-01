@@ -38,7 +38,7 @@ jobs:
         working-directory: terraform
         run: |
           terraform init -backend-config='bucket=${{ secrets.AWS_TFSTATE_BUCKET }}' \
-                         -backend-config='key=teraform/devops-project-terraform-state-2025/terraform.tfstate' \
+                         -backend-config='key=terraform/terraform.tfstate' \
                          -backend-config='region=${{ secrets.AWS_REGION }}' \
                          -backend-config='encrypt=true'
           terraform output -raw instance_id > ../ansible/inventories/instance_id
