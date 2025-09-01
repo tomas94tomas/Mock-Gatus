@@ -64,4 +64,4 @@ jobs:
         working-directory: ansible
         run: |
           ansible --version
-          ansible-playbook playbooks/site.yml -vv
+          ansible-playbook site.yml -vv
