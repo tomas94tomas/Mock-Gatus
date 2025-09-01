@@ -66,7 +66,10 @@ jobs:
           EOF
           echo "Inventory:"
           cat inventories/hosts.ini
-
+      - name: Wait for SSM agent to be ready
+        run: |
+          echo "Waiting for EC2 instance to be fully ready..."
+          sleep 60  
       - name: Run playbook (prepare VM + deploy Gatus)
         working-directory: ansible
         run: |
