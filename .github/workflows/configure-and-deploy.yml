@@ -17,6 +17,8 @@ env:
 jobs:
   ansible:
     runs-on: ubuntu-latest
+    env:
+       ANSIBLE_COLLECTIONS_PATHS: ${{ github.workspace }}/.ansible/collections:/home/runner/.ansible/collections:/usr/share/ansible/collections
     steps:
       - uses: actions/checkout@v4
 
@@ -46,9 +48,7 @@ jobs:
         with: { python-version: "3.11" }
       
       - name: Install Ansible + AWS collections (explicit path + verify)
-        env:
-          # Tell Ansible exactly where to look for collections (repo-local first)
-          ANSIBLE_COLLECTIONS_PATHS: ${{ github.workspace }}/.ansible/collections:/home/runner/.ansible/collections:/usr/share/ansible/collections
+        
         run: |
           set -e
           python -m pip install --upgrade pip
