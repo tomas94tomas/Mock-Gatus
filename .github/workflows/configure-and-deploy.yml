@@ -53,13 +53,8 @@ jobs:
           set -e
           python -m pip install --upgrade pip
           pip install ansible boto3 botocore
-          mkdir -p .ansible/collections
-          # Install required collections into the repo-local path
-          ansible-galaxy collection install -r ansible/requirements.yml -p .ansible/collections
-          echo "== Collections installed =="
-          ansible-galaxy collection list | sed -n '1,200p'
-          echo "== Connection plugins =="
-          ansible-doc -t connection -l | grep -E "amazon\.aws\.aws_ssm|aws_ssm" || (echo "aws_ssm plugin not found"; exit 1)
+          ansible-galaxy collection install amazon.aws community.general
+          ansible-galaxy collection list
 
       - name: Create inventory using SSM connection
         working-directory: ansible
