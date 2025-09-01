@@ -56,20 +56,17 @@ jobs:
           ansible-galaxy collection install amazon.aws community.general
           ansible-galaxy collection list
 
-      - name: Create inventory using SSM connection
+      - name: Create inventory using direct connection
         working-directory: ansible
         run: |
-          IID=$(cat inventories/instance_id)
+          terraform output -raw instance_public_ip > instance_ip.txt
+          INSTANCE_IP=$(cat instance_ip.txt)
           cat > inventories/hosts.ini <<EOF
           [aws]
-          ${IID} ansible_connection=amazon.aws.aws_ssm ansible_aws_ssm_region=${{ env.AWS_REGION }} ansible_user=root ansible_aws_ssm_run_as_user=root ansible_aws_ssm_execution_timeout=3600
+          ${INSTANCE_IP} ansible_connection=local ansible_delegate_to=localhost
           EOF
           echo "Inventory:"
-          cat inventories/hosts.ini
-      - name: Wait for SSM agent to be ready
-        run: |
-          echo "Waiting for EC2 instance to be fully ready..."
-          sleep 60  
+          cat inventories/hosts.ini  
       - name: Run playbook (prepare VM + deploy Gatus)
         working-directory: ansible
         run: |
