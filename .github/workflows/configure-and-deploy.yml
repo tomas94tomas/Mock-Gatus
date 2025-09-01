@@ -62,7 +62,7 @@ jobs:
           IID=$(cat inventories/instance_id)
           cat > inventories/hosts.ini <<EOF
           [aws]
-          ${IID} ansible_connection=aws_ssm ansible_user=ec2-user
+          ${IID} ansible_host=${IID} ansible_connection=aws_ssm ansible_user=ec2-user
           EOF
           echo "Inventory:"
           cat inventories/hosts.ini
