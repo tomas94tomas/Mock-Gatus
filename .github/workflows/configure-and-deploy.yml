@@ -18,7 +18,13 @@ jobs:
   ansible:
     runs-on: ubuntu-latest
     env:
-       ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/.ansible/collections:/home/runner/.ansible/collections:/usr/share/ansible/collections
+      # Use the singular form to avoid deprecation warnings.
+      ANSIBLE_COLLECTIONS_PATH: /var/lib/awx/ansible/collections:/home/runner/.ansible/collections:/usr/share/ansible/collections
+      # Optional but handy: point Ansible at your repo cfg
+      ANSIBLE_CONFIG: ${{ github.workspace }}/ansible/ansible.cfg
+      # Ensure we pick up binaries from the venv when PATH is exported
+      AWX_VENV_BIN: /var/lib/awx/ansible/bin
+
     steps:
       - uses: actions/checkout@v4
 
@@ -43,31 +49,51 @@ jobs:
                          -backend-config='encrypt=true'
           terraform output -raw instance_id > ../ansible/inventories/instance_id
 
-      - name: Setup Python & Ansible
-        uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      
-      - name: Install Ansible + AWS collections (explicit path + verify)
-        
+      # --- AWX-style virtualenv at /var/lib/awx/ansible ---
+      - name: Create /var/lib/awx/ansible virtualenv
         run: |
           set -e
-          python -m pip install --upgrade pip
-          pip install ansible boto3 botocore
-          mkdir -p .ansible/collections
-          # Install required collections into the repo-local path
-          ansible-galaxy collection install -r ansible/requirements.yml -p .ansible/collections
-          echo "== Collections installed =="
-          ansible-galaxy collection list | sed -n '1,200p'
-          echo "== Connection plugins =="
-          ansible-doc -t connection -l | grep -E "amazon\.aws\.aws_ssm|aws_ssm" || (echo "aws_ssm plugin not found"; exit 1)
+          sudo mkdir -p /var/lib/awx/ansible
+          sudo python3 -m venv /var/lib/awx/ansible
+          sudo chown -R "$(id -u)":"$(id -g)" /var/lib/awx/ansible
+
+      - name: Install Ansible (in venv) and AWS Python deps
+        run: |
+          set -e
+          "${AWX_VENV_BIN}/python" -m pip install --upgrade pip
+          "${AWX_VENV_BIN}/pip" install 'ansible>=9' boto3 botocore
+
+      - name: Install AWS collections into /var/lib/awx/ansible/collections
+        run: |
+          set -e
+          # Ensure collections directory exists and is writable
+          sudo mkdir -p /var/lib/awx/ansible/collections
+          sudo chown -R "$(id -u)":"$(id -g)" /var/lib/awx/ansible/collections
+          # Install collections as per requirements.yml to the AWX venv path
+          "${AWX_VENV_BIN}/ansible-galaxy" collection install \
+            -r ansible/requirements.yml \
+            -p /var/lib/awx/ansible/collections
+
+      - name: Verify environment & SSM connection plugin
+        run: |
+          set -e
+          export PATH="${AWX_VENV_BIN}:$PATH"
+          echo "Using ansible from: $(which ansible)"
+          ansible --version
+          echo "ANSIBLE_COLLECTIONS_PATH=${ANSIBLE_COLLECTIONS_PATH}"
+          # Dump effective config and show collections paths
+          "${AWX_VENV_BIN}/ansible-config" dump | grep -i collections_path || true
+          echo "== Connection plugins available =="
+          "${AWX_VENV_BIN}/ansible-doc" -t connection -l | grep -E '^amazon\.aws\.aws_ssm\s' || (echo "aws_ssm plugin not found" && exit 1)
 
       - name: Create inventory using SSM connection
         working-directory: ansible
         run: |
+          set -e
           IID=$(cat inventories/instance_id)
           cat > inventories/hosts.ini <<EOF
           [aws]
-          ${IID} ansible_connection=amazon.aws.aws_ssm ansible_aws_ssm_region=${{ env.AWS_REGION }} ansible_user=root ansible_aws_ssm_run_as_user=root ansible_aws_ssm_execution_timeout=3600
+          ${IID} ansible_connection=aws_ssm ansible_aws_ssm_region=${{ env.AWS_REGION }} ansible_user=root ansible_aws_ssm_run_as_user=root ansible_aws_ssm_execution_timeout=3600
           EOF
           echo "Inventory:"
           cat inventories/hosts.ini
@@ -75,5 +101,7 @@ jobs:
       - name: Run playbook (prepare VM + deploy Gatus)
         working-directory: ansible
         run: |
+          set -e
+          export PATH="${AWX_VENV_BIN}:$PATH"
           ansible --version
           ansible-playbook site.yml -vv
