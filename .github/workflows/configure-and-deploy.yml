@@ -63,4 +63,5 @@ jobs:
       - name: Run playbook (prepare VM + deploy Gatus)
         working-directory: ansible
         run: |
-          ansible-playbook -i inventories/hosts.ini playbooks/site.yml -vv
+          ansible --version
+          ansible-playbook playbooks/site.yml -vv
