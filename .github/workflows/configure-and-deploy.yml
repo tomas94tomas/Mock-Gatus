@@ -18,7 +18,7 @@ jobs:
   ansible:
     runs-on: ubuntu-latest
     env:
-       ANSIBLE_COLLECTIONS_PATHS: ${{ github.workspace }}/.ansible/collections:/home/runner/.ansible/collections:/usr/share/ansible/collections
+       ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/.ansible/collections:/home/runner/.ansible/collections:/usr/share/ansible/collections
     steps:
       - uses: actions/checkout@v4
 
