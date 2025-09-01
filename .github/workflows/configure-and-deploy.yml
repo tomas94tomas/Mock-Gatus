@@ -45,13 +45,21 @@ jobs:
         uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       
-      - name: Install Ansible + AWS collections
+      - name: Install Ansible + AWS collections (explicit path + verify)
+        env:
+          # Tell Ansible exactly where to look for collections (repo-local first)
+          ANSIBLE_COLLECTIONS_PATHS: ${{ github.workspace }}/.ansible/collections:/home/runner/.ansible/collections:/usr/share/ansible/collections
         run: |
+          set -e
           python -m pip install --upgrade pip
           pip install ansible boto3 botocore
-          ansible-galaxy collection install -r ansible/requirements.yml
+          mkdir -p .ansible/collections
+          # Install required collections into the repo-local path
+          ansible-galaxy collection install -r ansible/requirements.yml -p .ansible/collections
           echo "== Collections installed =="
-          ansible-galaxy collection list | sed -n '1,120p'
+          ansible-galaxy collection list | sed -n '1,200p'
+          echo "== Connection plugins =="
+          ansible-doc -t connection -l | grep -E "amazon\.aws\.aws_ssm|aws_ssm" || (echo "aws_ssm plugin not found"; exit 1)
 
       - name: Create inventory using SSM connection
         working-directory: ansible
