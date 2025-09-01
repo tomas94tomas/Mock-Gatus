@@ -41,9 +41,7 @@ jobs:
                           -backend-config='key=terraform/terraform.tfstate' \
                           -backend-config='region=${{ secrets.AWS_REGION }}' \
                           -backend-config='encrypt=true'
-          # First check if outputs exist
           terraform output || echo "No outputs found, continuing anyway"
-          # Try to get instance_id, but handle empty case
           terraform output -raw instance_id > ../ansible/inventories/instance_id 2>/dev/null || echo "instance_id not available"
           
           echo "Contents of instance_id file:"
