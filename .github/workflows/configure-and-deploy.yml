@@ -18,11 +18,9 @@ jobs:
   ansible:
     runs-on: ubuntu-latest
     env:
-      # Use the singular form to avoid deprecation warnings.
+      # Use singular env var to avoid deprecation warning
       ANSIBLE_COLLECTIONS_PATH: /var/lib/awx/ansible/collections:/home/runner/.ansible/collections:/usr/share/ansible/collections
-      # Optional but handy: point Ansible at your repo cfg
       ANSIBLE_CONFIG: ${{ github.workspace }}/ansible/ansible.cfg
-      # Ensure we pick up binaries from the venv when PATH is exported
       AWX_VENV_BIN: /var/lib/awx/ansible/bin
 
     steps:
@@ -63,28 +61,40 @@ jobs:
           "${AWX_VENV_BIN}/python" -m pip install --upgrade pip
           "${AWX_VENV_BIN}/pip" install 'ansible>=9' boto3 botocore
 
-      - name: Install AWS collections into /var/lib/awx/ansible/collections
+      - name: Install AWS collections into /var/lib/awx/ansible/collections (force clean)
         run: |
           set -e
-          # Ensure collections directory exists and is writable
+          sudo rm -rf /var/lib/awx/ansible/collections
           sudo mkdir -p /var/lib/awx/ansible/collections
           sudo chown -R "$(id -u)":"$(id -g)" /var/lib/awx/ansible/collections
-          # Install collections as per requirements.yml to the AWX venv path
+
+          # Install pinned amazon.aws + community.aws collections
           "${AWX_VENV_BIN}/ansible-galaxy" collection install \
-            -r ansible/requirements.yml \
+            amazon.aws:==7.4.3 community.aws:==7.2.0 \
             -p /var/lib/awx/ansible/collections
+
+          echo "=== Tree of /var/lib/awx/ansible/collections ==="
+          find /var/lib/awx/ansible/collections -maxdepth 4 -type d | sed -n '1,200p'
+          echo "=== Expect to see: /var/lib/awx/ansible/collections/ansible_collections/amazon/aws ==="
 
       - name: Verify environment & SSM connection plugin
         run: |
           set -e
           export PATH="${AWX_VENV_BIN}:$PATH"
+
           echo "Using ansible from: $(which ansible)"
           ansible --version
+
           echo "ANSIBLE_COLLECTIONS_PATH=${ANSIBLE_COLLECTIONS_PATH}"
-          # Dump effective config and show collections paths
           "${AWX_VENV_BIN}/ansible-config" dump | grep -i collections_path || true
-          echo "== Connection plugins available =="
-          "${AWX_VENV_BIN}/ansible-doc" -t connection -l | grep -E '^amazon\.aws\.aws_ssm\s' || (echo "aws_ssm plugin not found" && exit 1)
+
+          echo "=== Check that amazon.aws is physically present ==="
+          test -d /var/lib/awx/ansible/collections/ansible_collections/amazon/aws || \
+            (echo "amazon.aws collection folder missing"; exit 1)
+
+          echo "=== Connection plugins available (looking for amazon.aws.aws_ssm) ==="
+          "${AWX_VENV_BIN}/ansible-doc" -t connection -l | grep -E '^amazon\.aws\.aws_ssm\s' || \
+            (echo "aws_ssm plugin not found in ansible-doc"; exit 1)
 
       - name: Create inventory using SSM connection
         working-directory: ansible
