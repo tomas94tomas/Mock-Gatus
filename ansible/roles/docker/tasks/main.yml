@@ -1,34 +1,51 @@
 ---
-- name: Install Docker if missing (AL2023 uses dnf)
-  ansible.builtin.shell: |
-    set -e
-    if ! command -v docker >/dev/null 2>&1; then
-      dnf -y install docker
-    fi
-  args:
-    executable: /bin/bash
+- name: Copy docker-compose and config
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "/opt/gatus/{{ item.dest }}"
+    owner: ec2-user
+    group: ec2-user
+    mode: "0644"
+  loop:
+    - { src: "docker-compose.yml", dest: "docker-compose.yml" }
+    - { src: "config/gatus.yaml",   dest: "config/gatus.yaml" }
 
-- name: Enable and start Docker
-  ansible.builtin.shell: |
-    systemctl enable --now docker
-  args:
-    executable: /bin/bash
-
-- name: Ensure docker compose v2 binary exists
-  ansible.builtin.shell: |
-    set -e
-    if ! command -v docker-compose >/dev/null 2>&1; then
-      curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
-        -o /usr/local/bin/docker-compose
-      chmod +x /usr/local/bin/docker-compose
-    fi
-  args:
-    executable: /bin/bash
-
-- name: Create base dir for Gatus
+- name: Ensure config dir perms
   ansible.builtin.file:
-    path: /opt/gatus
+    path: /opt/gatus/config
     state: directory
-    owner: root
-    group: root
+    owner: ec2-user
+    group: ec2-user
     mode: "0755"
+
+- name: Start/Update stack (docker compose OR docker-compose)
+  ansible.builtin.shell: |
+    set -e
+    cd /opt/gatus
+    if docker compose version >/dev/null 2>&1; then
+      docker compose pull
+      docker compose up -d
+    else
+      /usr/local/bin/docker-compose pull
+      /usr/local/bin/docker-compose up -d
+    fi
+  args:
+    executable: /bin/bash
+
+- name: Wait for Gatus to listen on 8080
+  ansible.builtin.shell: "ss -lntp | grep ':8080 '"
+  register: gatus_listen
+  retries: 24
+  delay: 5
+  until: gatus_listen.rc == 0
+  changed_when: false
+  failed_when: gatus_listen.rc != 0
+
+- name: Probe health endpoint
+  ansible.builtin.shell: "curl -fsS http://127.0.0.1:8080/health || curl -I -sS http://127.0.0.1:8080 | head -n1"
+  register: gatus_probe
+  changed_when: false
+
+- name: Show health check output
+  ansible.builtin.debug:
+    var: gatus_probe.stdout
