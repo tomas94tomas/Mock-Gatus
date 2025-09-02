@@ -19,7 +19,7 @@ jobs:
   ansible:
     runs-on: ubuntu-latest
     env:
-       ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/.ansible/collections:/home/runner/.ansible/collections:/usr/share/ansible/collections
+      ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/.ansible/collections:/home/runner/.ansible/collections:/usr/share/ansible/collections
     steps:
       - uses: actions/checkout@v4
 
@@ -44,13 +44,13 @@ jobs:
                           -backend-config="encrypt=true"
           terraform output || echo "No outputs found, continuing anyway"
           terraform output -raw instance_id > ../ansible/inventories/instance_id 2>/dev/null || echo "instance_id not available"
-
           echo "Contents of instance_id file:"
           cat ../ansible/inventories/instance_id || echo "File is empty"
 
       - name: Setup Python & Ansible
         uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
+        with:
+          python-version: "3.11"
 
       - name: Install Ansible + AWS collections (explicit path + verify)
         run: |
@@ -69,10 +69,26 @@ jobs:
           IID=$(cat inventories/instance_id)
           cat > inventories/hosts.ini <<EOF
           [aws]
-          ${IID} ansible_host=${IID} ansible_connection=aws_ssm ansible_user=ec2-user aws_ssm_region=${{ env.AWS_REGION }}
+          ${IID} ansible_host=${IID} ansible_connection=aws_ssm ansible_user=root aws_ssm_region=${{ env.AWS_REGION }}
           EOF
           echo "Inventory:"
           cat inventories/hosts.ini
+
+      - name: Diagnose EC2 IAM profile and SSM status
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+        working-directory: ansible
+        run: |
+          set -e
+          IID=$(cat inventories/instance_id)
+          echo "InstanceId: $IID"
+          echo -n "IAM Instance Profile ARN: "
+          aws ec2 describe-instances --region "$AWS_REGION" --instance-ids "$IID" \
+            --query 'Reservations[0].Instances[0].IamInstanceProfile.Arn' --output text
+          echo -n "SSM Managed count: "
+          aws ssm describe-instance-information --region "$AWS_REGION" \
+            --filters Key=InstanceIds,Values="$IID" \
+            --query 'InstanceInformationList | length(@)' --output text
 
       - name: Wait for SSM Managed instance
         env:
@@ -80,7 +96,7 @@ jobs:
         working-directory: ansible
         run: |
           IID=$(cat inventories/instance_id)
-          echo "Waiting for $IID to appear as a Managed instance in SSM..."
+          echo "Waiting for $IID to register in SSM..."
           for i in {1..30}; do
             COUNT=$(aws ssm describe-instance-information \
               --region "$AWS_REGION" \
