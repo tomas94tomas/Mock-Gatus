@@ -165,14 +165,13 @@ data "template_cloudinit_config" "user_data" {
 # EC2 Instance
 # -------------------------
 resource "aws_instance" "vm" {
-  ami                    = data.aws_ami.al2023.id
-  instance_type          = "t3.micro"
-  subnet_id              = aws_subnet.public.id
-  vpc_security_group_ids = [aws_security_group.sg.id]
-
-  # Use the proper EC2 SSM instance profile (NOT the OIDC role)
-  iam_instance_profile = aws_iam_instance_profile.ec2_ssm_profile.name
-
-  user_data_base64 = data.template_cloudinit_config.user_data.rendered
-  tags             = { Name = "${local.name}-ec2" }
+  ami                         = data.aws_ami.al2023.id
+  instance_type               = "t3.micro"
+  subnet_id                   = aws_subnet.public.id
+  vpc_security_group_ids      = [aws_security_group.sg.id]
+  iam_instance_profile        = aws_iam_instance_profile.ec2_ssm_profile.name
+  user_data_base64            = data.template_cloudinit_config.user_data.rendered
+  user_data_replace_on_change = true
+  depends_on                  = [aws_iam_instance_profile.ec2_ssm_profile]
+  tags                        = { Name = "${local.name}-ec2" }
 }
