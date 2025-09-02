@@ -52,15 +52,13 @@ jobs:
         with:
           python-version: "3.11"
 
+      #Install ansible-core and collections via requirements.yml (pins are compatible)
       - name: Install Ansible Core + AWS collections
         run: |
           set -e
           python -m pip install --upgrade pip
           pip install "ansible-core==2.18.8" boto3 botocore
-          ansible-galaxy collection install \
-            community.aws==7.2.0 \
-            amazon.aws==9.5.0 \
-            community.general==9.2.0
+          ansible-galaxy collection install -r ansible/requirements.yml
           ansible --version
           ansible-galaxy collection list
 
