@@ -1,11 +1,18 @@
 services:
   gatus:
-    image: twinproduction/gatus:v5
+    image: ghcr.io/twin/gatus:v5.23.0
     ports:
       - "8080:8080"
     volumes:
       - ./config:/config
       - gdata:/data
     restart: unless-stopped
+    # Optional, helps Docker report container status
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
 volumes:
   gdata:
