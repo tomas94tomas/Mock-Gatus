@@ -2,7 +2,9 @@ locals { name = var.project_tag }
 
 data "aws_caller_identity" "current" {}
 
-# VPC + Internet
+# -------------------------
+# Networking: VPC + Internet
+# -------------------------
 resource "aws_vpc" "vpc" {
   cidr_block = "10.50.0.0/16"
   tags       = { Name = "${local.name}-vpc" }
@@ -32,11 +34,14 @@ resource "aws_route_table_association" "rta" {
   route_table_id = aws_route_table.rt.id
 }
 
-# SG (8080 open for demo; SSH optional)
+# -------------------------
+# Security Group
+# -------------------------
 resource "aws_security_group" "sg" {
   name   = "${local.name}-sg"
   vpc_id = aws_vpc.vpc.id
 
+  # Open Gatus demo port
   ingress {
     from_port   = 8080
     to_port     = 8080
@@ -44,6 +49,7 @@ resource "aws_security_group" "sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Optional SSH (only if allow_ssh_from_cidr is set)
   dynamic "ingress" {
     for_each = var.allow_ssh_from_cidr == "" ? [] : [1]
     content {
@@ -54,6 +60,7 @@ resource "aws_security_group" "sg" {
     }
   }
 
+  # Egress all
   egress {
     from_port   = 0
     to_port     = 0
@@ -62,7 +69,9 @@ resource "aws_security_group" "sg" {
   }
 }
 
-# Latest Amazon Linux 2023 AMI
+# -------------------------
+# AMI: Amazon Linux 2023
+# -------------------------
 data "aws_ami" "al2023" {
   owners      = ["137112412989"]
   most_recent = true
@@ -78,11 +87,9 @@ data "aws_ami" "al2023" {
   }
 }
 
-############################################
-# ROLES: Separate roles for EC2 and GitHub #
-############################################
-
-# (A) EC2 Instance Role for SSM (trusts EC2)
+# =====================================================
+# IAM (A): EC2 Instance Role for SSM (trusts EC2)
+# =====================================================
 resource "aws_iam_role" "ec2_ssm_role" {
   name = "${local.name}-ec2-ssm-role"
   assume_role_policy = jsonencode({
@@ -96,19 +103,19 @@ resource "aws_iam_role" "ec2_ssm_role" {
   tags = { Name = "${local.name}-ec2-ssm-role" }
 }
 
-# Minimum permissions for SSM-managed instance
 resource "aws_iam_role_policy_attachment" "ec2_ssm_core" {
   role       = aws_iam_role.ec2_ssm_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# Instance profile referencing the EC2 role
 resource "aws_iam_instance_profile" "ec2_ssm_profile" {
   name = "${local.name}-ec2-ssm-ip"
   role = aws_iam_role.ec2_ssm_role.name
 }
 
-# (B) GitHub OIDC Role (for Actions to assume) -- keeps your CI working
+# =====================================================
+# IAM (B): GitHub OIDC Role (for GitHub Actions only)
+# =====================================================
 resource "aws_iam_role" "gh_oidc_role" {
   name = "${local.name}-ssm-ec2-role-v2"
   assume_role_policy = jsonencode({
@@ -117,7 +124,7 @@ resource "aws_iam_role" "gh_oidc_role" {
       Effect = "Allow",
       Principal = {
         Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
-      }
+      },
       Action = "sts:AssumeRoleWithWebIdentity",
       Condition = {
         StringLike = {
@@ -134,8 +141,9 @@ resource "aws_iam_role_policy_attachment" "gh_oidc_admin" {
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
 }
 
-############################################
+# -------------------------
 # Cloud-init: enable SSM agent, Docker, compose
+# -------------------------
 data "template_cloudinit_config" "user_data" {
   base64_encode = true
   part {
@@ -153,15 +161,18 @@ data "template_cloudinit_config" "user_data" {
   }
 }
 
+# -------------------------
+# EC2 Instance
+# -------------------------
 resource "aws_instance" "vm" {
   ami                    = data.aws_ami.al2023.id
   instance_type          = "t3.micro"
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.sg.id]
 
-  #Use the proper EC2 instance profile for SSM (NOT the OIDC role)
-  iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name
+  # Use the proper EC2 SSM instance profile (NOT the OIDC role)
+  iam_instance_profile = aws_iam_instance_profile.ec2_ssm_profile.name
 
-  user_data_base64       = data.template_cloudinit_config.user_data.rendered
-  tags                   = { Name = "${local.name}-ec2" }
+  user_data_base64 = data.template_cloudinit_config.user_data.rendered
+  tags             = { Name = "${local.name}-ec2" }
 }
