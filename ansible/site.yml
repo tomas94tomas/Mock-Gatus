@@ -2,6 +2,7 @@
 - name: Prepare EC2 for containers and deploy Gatus
   hosts: aws
   gather_facts: false
+  become: true        # aws_ssm ignores ansible_user; use privilege for docker/systemd
   vars:
     gatus_dir: /opt/gatus
   roles:

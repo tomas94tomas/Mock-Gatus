@@ -19,7 +19,7 @@ jobs:
   ansible:
     runs-on: ubuntu-latest
     env:
-      ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/.ansible/collections:/home/runner/.ansible/collections:/usr/share/ansible/collections
+       ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/.ansible/collections:/home/runner/.ansible/collections:/usr/share/ansible/collections
     steps:
       - uses: actions/checkout@v4
 
@@ -49,17 +49,24 @@ jobs:
 
       - name: Setup Python
         uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+        with: { python-version: "3.11" }
 
-      #Install ansible-core and collections via requirements.yml (pins are compatible)
-      - name: Install Ansible Core + AWS collections
+      - name: Install Ansible Core + deps
         run: |
           set -e
           python -m pip install --upgrade pip
           pip install "ansible-core==2.18.8" boto3 botocore
-          ansible-galaxy collection install -r ansible/requirements.yml
           ansible --version
+
+      - name: Install AWS Session Manager Plugin
+        run: |
+          curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o /tmp/session-manager-plugin.deb
+          sudo dpkg -i /tmp/session-manager-plugin.deb
+          session-manager-plugin --version
+
+      - name: Install Ansible collections (pinned)
+        run: |
+          ansible-galaxy collection install -r ansible/requirements.yml
           ansible-galaxy collection list
 
       - name: Create inventory using SSM connection
@@ -68,7 +75,7 @@ jobs:
           IID=$(cat inventories/instance_id)
           cat > inventories/hosts.ini <<EOF
           [aws]
-          ${IID} ansible_host=${IID} ansible_connection=aws_ssm ansible_user=ec2-user aws_ssm_region=${{ env.AWS_REGION }}
+          ${IID} ansible_host=${IID} ansible_connection=aws_ssm ansible_aws_ssm_region=${{ env.AWS_REGION }} ansible_aws_ssm_bucket_name=${{ env.AWS_TFSTATE_BUCKET }}
           EOF
           echo "Inventory:"
           cat inventories/hosts.ini
@@ -114,5 +121,4 @@ jobs:
       - name: Run playbook (prepare VM + deploy Gatus)
         working-directory: ansible
         run: |
-          ansible --version
           ansible-playbook site.yml -vv
