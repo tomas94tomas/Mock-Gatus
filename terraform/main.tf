@@ -142,21 +142,40 @@ resource "aws_iam_role_policy_attachment" "gh_oidc_admin" {
 }
 
 # -------------------------
-# Cloud-init: enable SSM agent, Docker, compose
+# Cloud-init: install & start SSM agent, Docker, compose
+# (Region baked in from Terraform to avoid IMDSv2 token complexity)
 # -------------------------
 data "template_cloudinit_config" "user_data" {
   base64_encode = true
   part {
     content_type = "text/cloud-config"
     content      = <<-YAML
-      packages: [ docker ]
       runcmd:
-        - systemctl enable --now amazon-ssm-agent
+        # --- Bootstrap markers ---
+        - echo "cloud-init starting" | tee -a /var/log/ssm-bootstrap.marker
+
+        # --- SSM Agent (download regional RPM directly) ---
+        - set -xe
+        - curl -fSL "https://s3.${var.region}.amazonaws.com/amazon-ssm-${var.region}/latest/linux_amd64/amazon-ssm-agent.rpm" -o /root/amazon-ssm-agent.rpm
+        - rpm -Uvh /root/amazon-ssm-agent.rpm || rpm -ivh /root/amazon-ssm-agent.rpm
+        - systemctl enable amazon-ssm-agent
+        - systemctl restart amazon-ssm-agent
+        - systemctl is-active amazon-ssm-agent | tee -a /var/log/ssm-bootstrap.marker
+
+        # --- Docker ---
+        - dnf install -y docker
         - usermod -aG docker ec2-user
         - systemctl enable --now docker
-        - curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
+
+        # --- Docker Compose ---
+        - curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
         - chmod +x /usr/local/bin/docker-compose
+
+        # --- Gatus prep ---
         - mkdir -p /opt/gatus/config
+
+        # --- Done ---
+        - echo "bootstrap done" | tee -a /var/log/ssm-bootstrap.marker
     YAML
   }
 }
@@ -169,9 +188,11 @@ resource "aws_instance" "vm" {
   instance_type               = "t3.micro"
   subnet_id                   = aws_subnet.public.id
   vpc_security_group_ids      = [aws_security_group.sg.id]
+
   iam_instance_profile        = aws_iam_instance_profile.ec2_ssm_profile.name
   user_data_base64            = data.template_cloudinit_config.user_data.rendered
   user_data_replace_on_change = true
   depends_on                  = [aws_iam_instance_profile.ec2_ssm_profile]
-  tags                        = { Name = "${local.name}-ec2" }
+
+  tags = { Name = "${local.name}-ec2" }
 }
