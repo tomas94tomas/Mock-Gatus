@@ -26,7 +26,7 @@ jobs:
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.AWS_OIDC_ROLE_NAME }}
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/mock-gatus-ssm-ec2-role-v2
           aws-region: ${{ env.AWS_REGION }}
       - name: Terraform Init
         working-directory: terraform

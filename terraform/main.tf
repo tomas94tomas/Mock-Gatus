@@ -1,35 +1,38 @@
 locals { name = var.project_tag }
 
+data "aws_caller_identity" "current" {}
+
 # Create the GitHub OIDC Provider
-resource "aws_iam_openid_connect_provider" "github" {
-  url = "https://token.actions.githubusercontent.com"
-
-  client_id_list = [
-    "sts.amazonaws.com"
-  ]
-
-  # thumbprint_list = [
-  #   "6938fd4d98bab03faadb97b34396831e3780aea1" # Current GitHub OIDC thumbprint
-  # ]
-
-  tags = {
-    Name = "github-oidc-provider"
-  }
-}
-
+# resource "aws_iam_openid_connect_provider" "github" {
+#   url = "https://token.actions.githubusercontent.com"
+#   client_id_list = [
+#     "sts.amazonaws.com"
+#   ]
+#   # thumbprint_list = [
+#   #   "6938fd4d98bab03faadb97b34396831e3780aea1" # Current GitHub OIDC thumbprint
+#   # ]
+#   tags = {
+#     Name = "github-oidc-provider"
+#   }
+# }
 
 # VPC + Internet
 resource "aws_vpc" "vpc" {
   cidr_block = "10.50.0.0/16"
   tags       = { Name = "${local.name}-vpc" }
 }
-resource "aws_internet_gateway" "igw" { vpc_id = aws_vpc.vpc.id }
+
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.vpc.id
+}
+
 resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.vpc.id
   cidr_block              = "10.50.1.0/24"
   map_public_ip_on_launch = true
   tags                    = { Name = "${local.name}-public" }
 }
+
 resource "aws_route_table" "rt" {
   vpc_id = aws_vpc.vpc.id
   route {
@@ -37,6 +40,7 @@ resource "aws_route_table" "rt" {
     gateway_id = aws_internet_gateway.igw.id
   }
 }
+
 resource "aws_route_table_association" "rta" {
   subnet_id      = aws_subnet.public.id
   route_table_id = aws_route_table.rt.id
@@ -53,6 +57,7 @@ resource "aws_security_group" "sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
   dynamic "ingress" {
     for_each = var.allow_ssh_from_cidr == "" ? [] : [1]
     content {
@@ -62,6 +67,7 @@ resource "aws_security_group" "sg" {
       cidr_blocks = [var.allow_ssh_from_cidr]
     }
   }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -86,26 +92,31 @@ data "aws_ami" "al2023" {
 
 # EC2 can talk to SSM (no SSH keys required)
 resource "aws_iam_role" "ssm_role" {
-  name = "${local.name}-ssm-ec2-role"
+  name = "${local.name}-ssm-ec2-role-v2"
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
-    Statement = [{ Effect = "Allow",
+    Statement = [{
+      Effect = "Allow",
       Principal = {
-        Federated = aws_iam_openid_connect_provider.github.arn
+        Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
       }
       Action = "sts:AssumeRoleWithWebIdentity",
       Condition = {
-        StringLike = { "token.actions.githubusercontent.com:sub" = "repo:tomas94tomas/Mock-Gatus:*"
+        StringLike = {
+          "token.actions.githubusercontent.com:sub" = "repo:tomas94tomas/Mock-Gatus:*"
         }
-    } }]
+      }
+    }]
   })
 }
+
 resource "aws_iam_role_policy_attachment" "ssm_core" {
   role       = aws_iam_role.ssm_role.name
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
 }
+
 resource "aws_iam_instance_profile" "ssm_profile" {
-  name = "${local.name}-ip"
+  name = "${local.name}-ip-v2"
   role = aws_iam_role.ssm_role.name
 }
 
