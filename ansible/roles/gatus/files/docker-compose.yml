@@ -7,7 +7,7 @@ services:
       - ./config:/config
       - gdata:/data
     restart: unless-stopped
-    # Optional, helps Docker report container status
+    # Healthcheck is optional; if image lacks wget it will just be ignored by Docker
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 30s

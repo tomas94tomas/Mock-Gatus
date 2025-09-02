@@ -10,7 +10,8 @@
     mode: "0644"
   loop:
     - { src: "docker-compose.yml", dest: "docker-compose.yml" }
-    - { src: "config/gatus.yaml",   dest: "config/gatus.yaml" }
+    # Copy our repo file 'config/gatus.yaml' but NAME IT 'config.yaml' on the host
+    - { src: "config/gatus.yaml",  dest: "config/config.yaml" }
 
 - name: Ensure config dir perms
   ansible.builtin.file:
