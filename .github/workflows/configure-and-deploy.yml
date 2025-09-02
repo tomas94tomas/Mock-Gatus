@@ -47,20 +47,21 @@ jobs:
           echo "Contents of instance_id file:"
           cat ../ansible/inventories/instance_id || echo "File is empty"
 
-      - name: Setup Python & Ansible
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install Ansible + AWS collections (explicit path + verify)
+      - name: Install Ansible Core + AWS collections
         run: |
           set -e
           python -m pip install --upgrade pip
-          pip install ansible==9.6.0 boto3 botocore
+          pip install "ansible-core==2.18.8" boto3 botocore
           ansible-galaxy collection install \
             community.aws==7.2.0 \
             amazon.aws==9.5.0 \
             community.general==9.2.0
+          ansible --version
           ansible-galaxy collection list
 
       - name: Create inventory using SSM connection
@@ -69,7 +70,7 @@ jobs:
           IID=$(cat inventories/instance_id)
           cat > inventories/hosts.ini <<EOF
           [aws]
-          ${IID} ansible_host=${IID} ansible_connection=aws_ssm ansible_user=root aws_ssm_region=${{ env.AWS_REGION }}
+          ${IID} ansible_host=${IID} ansible_connection=aws_ssm ansible_user=ec2-user aws_ssm_region=${{ env.AWS_REGION }}
           EOF
           echo "Inventory:"
           cat inventories/hosts.ini
