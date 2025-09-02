@@ -66,13 +66,15 @@ resource "aws_security_group" "sg" {
 data "aws_ami" "al2023" {
   owners      = ["137112412989"]
   most_recent = true
-  filter { 
-  name = "name"
-  values = ["al2023-ami-*-x86_64"] 
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-x86_64"]
   }
-  filter { 
-  name = "architecture"
-  values = ["x86_64"] 
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
   }
 }
 
@@ -106,7 +108,7 @@ resource "aws_iam_instance_profile" "ec2_ssm_profile" {
   role = aws_iam_role.ec2_ssm_role.name
 }
 
-# (B) GitHub OIDC Role (for Actions to assume)
+# (B) GitHub OIDC Role (for Actions to assume) -- keeps your CI working
 resource "aws_iam_role" "gh_oidc_role" {
   name = "${local.name}-ssm-ec2-role-v2"
   assume_role_policy = jsonencode({
@@ -115,7 +117,7 @@ resource "aws_iam_role" "gh_oidc_role" {
       Effect = "Allow",
       Principal = {
         Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
-      },
+      }
       Action = "sts:AssumeRoleWithWebIdentity",
       Condition = {
         StringLike = {
@@ -157,7 +159,7 @@ resource "aws_instance" "vm" {
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.sg.id]
 
-  # ✅ Use the proper EC2 instance profile for SSM (NOT the OIDC role)
+  #Use the proper EC2 instance profile for SSM (NOT the OIDC role)
   iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name
 
   user_data_base64       = data.template_cloudinit_config.user_data.rendered

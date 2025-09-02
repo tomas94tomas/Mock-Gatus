@@ -10,16 +10,16 @@ permissions:
   contents: read
 
 env:
-  AWS_REGION:         ${{ secrets.AWS_REGION }}
-  AWS_ACCOUNT_ID:     ${{ secrets.AWS_ACCOUNT_ID }}
-  AWS_OIDC_ROLE_NAME: ${{ secrets.AWS_OIDC_ROLE_NAME }}
-  AWS_TFSTATE_BUCKET: ${{ secrets.AWS_TFSTATE_BUCKET }}
+  AWS_REGION:          ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID:      ${{ secrets.AWS_ACCOUNT_ID }}
+  AWS_OIDC_ROLE_NAME:  ${{ secrets.AWS_OIDC_ROLE_NAME }}
+  AWS_TFSTATE_BUCKET:  ${{ secrets.AWS_TFSTATE_BUCKET }}
 
 jobs:
   ansible:
     runs-on: ubuntu-latest
     env:
-       ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/.ansible/collections:/home/runner/.ansible/collections:/usr/share/ansible/collections
+      ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/.ansible/collections:/home/runner/.ansible/collections:/usr/share/ansible/collections
     steps:
       - uses: actions/checkout@v4
 
@@ -49,7 +49,8 @@ jobs:
 
       - name: Setup Python
         uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
+        with:
+          python-version: "3.11"
 
       - name: Install Ansible Core + deps
         run: |
@@ -91,10 +92,11 @@ jobs:
           echo -n "IAM Instance Profile ARN: "
           aws ec2 describe-instances --region "$AWS_REGION" --instance-ids "$IID" \
             --query 'Reservations[0].Instances[0].IamInstanceProfile.Arn' --output text
-          echo -n "SSM Managed count: "
+          echo -n " | SSM Managed count: "
           aws ssm describe-instance-information --region "$AWS_REGION" \
             --filters Key=InstanceIds,Values="$IID" \
             --query 'InstanceInformationList | length(@)' --output text
+          echo
 
       - name: Wait for SSM Managed instance
         env:
