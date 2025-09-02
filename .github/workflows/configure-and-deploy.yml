@@ -36,10 +36,14 @@ jobs:
         working-directory: terraform
         run: |
           terraform init -backend-config='bucket=${{ secrets.AWS_TFSTATE_BUCKET }}' \
-                         -backend-config='key=terraform/terraform.tfstate' \
-                         -backend-config='region=${{ secrets.AWS_REGION }}' \
-                         -backend-config='encrypt=true'
-          terraform output -raw instance_id > ../ansible/inventories/instance_id
+                          -backend-config='key=terraform/terraform.tfstate' \
+                          -backend-config='region=${{ secrets.AWS_REGION }}' \
+                          -backend-config='encrypt=true'
+          terraform output || echo "No outputs found, continuing anyway"
+          terraform output -raw instance_id > ../ansible/inventories/instance_id 2>/dev/null || echo "instance_id not available"
+          
+          echo "Contents of instance_id file:"
+          cat ../ansible/inventories/instance_id || echo "File is empty"
 
       - name: Setup Python & Ansible
         uses: actions/setup-python@v5
@@ -56,7 +60,7 @@ jobs:
           IID=$(cat inventories/instance_id)
           cat > inventories/hosts.ini <<EOF
           [aws]
-          ${IID} ansible_connection=aws_ssm ansible_user=ec2-user
+          ${IID} ansible_host=${IID} ansible_connection=aws_ssm ansible_user=ec2-user
           EOF
           echo "Inventory:"
           cat inventories/hosts.ini
