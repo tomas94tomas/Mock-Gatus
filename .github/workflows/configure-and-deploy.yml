@@ -10,21 +10,24 @@ permissions:
   contents: read
 
 env:
-  AWS_REGION:        ${{ secrets.AWS_REGION }}
-  AWS_ACCOUNT_ID:    ${{ secrets.AWS_ACCOUNT_ID }}
+  AWS_REGION:         ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID:     ${{ secrets.AWS_ACCOUNT_ID }}
   AWS_OIDC_ROLE_NAME: ${{ secrets.AWS_OIDC_ROLE_NAME }}
+  AWS_TFSTATE_BUCKET: ${{ secrets.AWS_TFSTATE_BUCKET }}
 
 jobs:
   ansible:
     runs-on: ubuntu-latest
+    env:
+       ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/.ansible/collections:/home/runner/.ansible/collections:/usr/share/ansible/collections
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3 
+      - uses: hashicorp/setup-terraform@v3
 
       - name: Ensure inventory folder
         run: mkdir -p ansible/inventories
-        
+
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -35,23 +38,29 @@ jobs:
         id: tf
         working-directory: terraform
         run: |
-          terraform init -backend-config='bucket=${{ secrets.AWS_TFSTATE_BUCKET }}' \
-                          -backend-config='key=terraform/terraform.tfstate' \
-                          -backend-config='region=${{ secrets.AWS_REGION }}' \
-                          -backend-config='encrypt=true'
+          terraform init -backend-config="bucket=${{ env.AWS_TFSTATE_BUCKET }}" \
+                          -backend-config="key=terraform/terraform.tfstate" \
+                          -backend-config="region=${{ env.AWS_REGION }}" \
+                          -backend-config="encrypt=true"
           terraform output || echo "No outputs found, continuing anyway"
           terraform output -raw instance_id > ../ansible/inventories/instance_id 2>/dev/null || echo "instance_id not available"
-          
+
           echo "Contents of instance_id file:"
           cat ../ansible/inventories/instance_id || echo "File is empty"
 
       - name: Setup Python & Ansible
         uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - run: |
+
+      - name: Install Ansible + AWS collections (explicit path + verify)
+        run: |
+          set -e
           python -m pip install --upgrade pip
-          pip install ansible boto3 botocore
-          ansible-galaxy collection install amazon.aws community.general
+          pip install ansible==9.6.0 boto3 botocore
+          ansible-galaxy collection install \
+            community.aws==7.2.0 \
+            amazon.aws==9.5.0 \
+            community.general==9.2.0
           ansible-galaxy collection list
 
       - name: Create inventory using SSM connection
@@ -60,10 +69,33 @@ jobs:
           IID=$(cat inventories/instance_id)
           cat > inventories/hosts.ini <<EOF
           [aws]
-          ${IID} ansible_host=${IID} ansible_connection=aws_ssm ansible_user=ec2-user
+          ${IID} ansible_host=${IID} ansible_connection=aws_ssm ansible_user=ec2-user aws_ssm_region=${{ env.AWS_REGION }}
           EOF
           echo "Inventory:"
           cat inventories/hosts.ini
+
+      - name: Wait for SSM Managed instance
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+        working-directory: ansible
+        run: |
+          IID=$(cat inventories/instance_id)
+          echo "Waiting for $IID to appear as a Managed instance in SSM..."
+          for i in {1..30}; do
+            COUNT=$(aws ssm describe-instance-information \
+              --region "$AWS_REGION" \
+              --filters Key=InstanceIds,Values="$IID" \
+              --query 'InstanceInformationList | length(@)' --output text || echo 0)
+            if [ "$COUNT" -ge 1 ]; then
+              echo "Instance is Managed by SSM."
+              exit 0
+            fi
+            echo "Not ready yet (try $i/30). Sleeping 10s..."
+            sleep 10
+          done
+          echo "ERROR: Instance never became Managed by SSM." >&2
+          exit 1
+
       - name: Run playbook (prepare VM + deploy Gatus)
         working-directory: ansible
         run: |

@@ -2,20 +2,6 @@ locals { name = var.project_tag }
 
 data "aws_caller_identity" "current" {}
 
-# Create the GitHub OIDC Provider
-# resource "aws_iam_openid_connect_provider" "github" {
-#   url = "https://token.actions.githubusercontent.com"
-#   client_id_list = [
-#     "sts.amazonaws.com"
-#   ]
-#   # thumbprint_list = [
-#   #   "6938fd4d98bab03faadb97b34396831e3780aea1" # Current GitHub OIDC thumbprint
-#   # ]
-#   tags = {
-#     Name = "github-oidc-provider"
-#   }
-# }
-
 # VPC + Internet
 resource "aws_vpc" "vpc" {
   cidr_block = "10.50.0.0/16"
@@ -90,8 +76,45 @@ data "aws_ami" "al2023" {
   }
 }
 
-# EC2 can talk to SSM (no SSH keys required)
-resource "aws_iam_role" "ssm_role" {
+############################################
+# ROLES: Separate roles for EC2 and GitHub #
+############################################
+
+# (A) EC2 Instance Role for SSM (trusts EC2)
+resource "aws_iam_role" "ec2_ssm_role" {
+  name = "${local.name}-ec2-ssm-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect = "Allow",
+      Principal = { Service = "ec2.amazonaws.com" },
+      Action   = "sts:AssumeRole"
+    }]
+  })
+  tags = { Name = "${local.name}-ec2-ssm-role" }
+}
+
+# Minimum permissions for SSM-managed instance
+resource "aws_iam_role_policy_attachment" "ec2_ssm_core" {
+  role       = aws_iam_role.ec2_ssm_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+# Optional: allow ECR pulls if needed later
+# resource "aws_iam_role_policy_attachment" "ec2_ecr_read" {
+#   role       = aws_iam_role.ec2_ssm_role.name
+#   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+# }
+
+# Instance profile referencing the EC2 role
+resource "aws_iam_instance_profile" "ec2_ssm_profile" {
+  name = "${local.name}-ec2-ssm-ip"
+  role = aws_iam_role.ec2_ssm_role.name
+}
+
+# (B) GitHub OIDC Role (for Actions to assume)
+# Keep this if you use GitHub OIDC to run terraform/apply, etc.
+resource "aws_iam_role" "gh_oidc_role" {
   name = "${local.name}-ssm-ec2-role-v2"
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -108,17 +131,15 @@ resource "aws_iam_role" "ssm_role" {
       }
     }]
   })
+  tags = { Name = "${local.name}-gh-oidc-role" }
 }
 
-resource "aws_iam_role_policy_attachment" "ssm_core" {
-  role       = aws_iam_role.ssm_role.name
+resource "aws_iam_role_policy_attachment" "gh_oidc_admin" {
+  role       = aws_iam_role.gh_oidc_role.name
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
 }
 
-resource "aws_iam_instance_profile" "ssm_profile" {
-  name = "${local.name}-ip-v2"
-  role = aws_iam_role.ssm_role.name
-}
+############################################
 
 # Cloud-init: install Docker + Compose, prep /opt/gatus (for later)
 data "template_cloudinit_config" "user_data" {
@@ -142,7 +163,10 @@ resource "aws_instance" "vm" {
   instance_type          = "t3.micro"
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.sg.id]
-  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
+
+  # Use the proper EC2 instance profile for SSM
+  iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name
+
   user_data_base64       = data.template_cloudinit_config.user_data.rendered
   tags                   = { Name = "${local.name}-ec2" }
 }
